@@ -1,0 +1,28 @@
+# This project's carve-outs from the Go lint baseline (.limen/lint-go.yaml):
+# the baseline's sections, in its shape, holding only what this project adds,
+# changes or takes out (book/per-language.md, "one baseline, per-project
+# carve-outs"). `just do lint go` renders the two on every run.
+golangci:
+  linters:
+    settings:
+      wrapcheck:
+        ignore-package-globs:
+          # This module's own packages: their errors are already classified
+          # (machine.ErrMissing, paths.ErrName, ...) and say what they refuse.
+          - github.com/farcloser/zerogravity/*
+      depguard:
+        rules:
+          main:
+            allow:
+              # CLI
+              - github.com/alecthomas/kong
+              # Shared primitives: filesystem, locks, cache, logging, lifecycle.
+              - github.com/mycophonic/primordium
+              - github.com/forkcloser/xos
+              # clonefile(2) for instant copy-on-write clones of a base.
+              - golang.org/x/sys/unix
+commands:
+  unshipped:
+    # Nothing is released until the VM boots end to end (DESIGN.md §10); the
+    # binary is built from the tree until then.
+    - ./cmd/zerogravity
