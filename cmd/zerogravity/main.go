@@ -1,3 +1,5 @@
+//go:build darwin && arm64
+
 // Command zerogravity installs, clones and boots macOS virtual machines inside
 // a project: no daemon, nothing system-wide. See DESIGN.md.
 package main

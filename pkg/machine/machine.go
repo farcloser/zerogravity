@@ -1,3 +1,5 @@
+//go:build darwin
+
 // Package machine is one virtual machine on disk: its directory, the files
 // Virtualization.framework needs, its config.json, and the lock a running
 // zerogravity holds on it. Booting is pkg/vm's; this package never touches the
