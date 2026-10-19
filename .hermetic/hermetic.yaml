@@ -1,0 +1,35 @@
+# The project's pins, resolved by hermetic (forkcloser/hermetic), the toolset's
+# own aqua: aqua's manifest format, under hermetic's name and directory.
+checksum:
+  enabled: true
+  require_checksum: true
+  supported_envs:
+    - darwin/arm64
+    - linux/amd64
+    - linux/arm64
+    - windows/amd64
+    - windows/arm64
+
+registries:
+  - type: standard
+    ref: v4.575.0 # renovate: depName=aquaproj/aqua-registry
+  - name: local
+    type: local
+    path: ../.limen/hermetic-registry.yaml
+
+packages:
+  # The limen this repository runs, and with it every canonical file it
+  # writes: the one canonical pin kept here, where Renovate bumps it.
+  - name: farcloser/limen@v0.14.0 # renovate: depName=farcloser/limen
+    registry: local
+  # The Go toolchain is the repository's own pin, seeded from limen's own
+  # manifest once and Renovate's here afterwards: a standard-library fix
+  # must not wait for a limen release. Not in the import, on purpose.
+  - name: golang/go@go1.27.2
+  # The project's own tools go here, above the import: extras, and any
+  # canonical tool at a version of the project's choosing (the resolver takes a
+  # package's first declaration, so an entry here overrides the import's).
+  # Every other tool limen requires comes from the import, at the versions
+  # this limen pins: a limen bump changes that file, never this list
+  # (book/tooling.md).
+  - import: ../.limen/hermetic.yaml

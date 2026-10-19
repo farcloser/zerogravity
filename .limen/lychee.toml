@@ -1,0 +1,36 @@
+# DO NOT EDIT MANUALLY.
+# Canonical lychee (link checker) configuration, identical in every repository.
+# A repository can add its own exclusions in a root .lint-links.toml — the `security links`
+# recipe passes both files and lychee merges them, concatenating the exclude
+# lists — so this baseline only carries exclusions that apply everywhere.
+
+# Traverse dotted directories: lychee skips hidden paths by default, which
+# silently drops every document under .github/ — the whole corpus in the org's
+# `.github` repository. Independent of .gitignore handling, so build artifacts
+# stay excluded and .git is not walked.
+hidden = true
+
+# lychee's default retry window spans seconds. Widened for what lychee does
+# retry: timeouts and 429 rate limits. A 5xx is never retried here, whatever
+# these say: lychee judges a rejected status retryable only for 429. The
+# `security links` recipe re-checks server errors once, a minute later, instead.
+# Never accept the codes: a server still erroring after a minute is a finding.
+max_retries = 6
+retry_wait_time = 5
+
+exclude = [
+  # fsf.org: verbatim (A)GPL license texts link to it, and its server (TLS 1.2
+  # with DHE-only key exchange) cannot complete a handshake with lychee's
+  # rustls, which implements neither. The links themselves are fine.
+  # gnu.org: rate-limits aggressively, so the license-text links to it fail
+  # intermittently.
+  'https?://(www\.)?(fsf|gnu)\.org(/|$)',
+  # github.com's pages for a file (blob/) or a directory (tree/), whoever owns
+  # the repository: github.com throttles them from Actions runners (503, then
+  # 503 again a minute later, while the same URLs answer 200 from a laptop),
+  # and the lane cannot tell a throttled page from a dead one. Our own files
+  # are checked as files by the owning repository's lane; a reference to
+  # someone else's file is pinned to a commit, which does not move. Every other
+  # page stays checked, github.com's included; no status code is accepted.
+  'https://github\.com/[^/]+/[^/]+/(blob|tree)/',
+]
