@@ -24,9 +24,11 @@ jobs:
     uses: ./.github/workflows/limen-verify.yaml
     permissions:
       contents: read
-      # A project that needs another runner set passes it here, e.g.
-      # with:
-      #   os: '["ubuntu-24.04", "macos-15"]'
+    # The binary links Virtualization.framework through cgo and clones disks
+    # with clonefile(2): darwin/arm64 is the only platform, and the vmnet
+    # attachment needs the macOS 26 SDK.
+    with:
+      os: '["macos-26"]'
 
   # The ONE required status check (defaultRequiredChecks in
   # internal/github/audit.go). Requiring the lanes by name would bake the
