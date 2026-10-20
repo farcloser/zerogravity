@@ -10,6 +10,10 @@ golangci:
           # This module's own packages: their errors are already classified
           # (machine.ErrMissing, paths.ErrName, ...) and say what they refuse.
           - github.com/farcloser/zerogravity/*
+          # The binding's errors already carry their sentinel (vz.ErrVsock,
+          # vmnet.ErrNetwork) and say what failed; pkg/vm hands them on as is.
+          - github.com/forkcloser/vz
+          - github.com/forkcloser/vz/*
       depguard:
         rules:
           main:
@@ -21,8 +25,16 @@ golangci:
               - github.com/forkcloser/xos
               # clonefile(2) for instant copy-on-write clones of a base.
               - golang.org/x/sys/unix
+              # Virtualization.framework, through the fork ossein and zerogravity share.
+              - github.com/forkcloser/vz
+              # Host-guest RPC over vsock.
+              - connectrpc.com/connect
+              - google.golang.org/protobuf
+              # The one ssh with the generated password, to install the agent.
+              - golang.org/x/crypto/ssh
 commands:
   unshipped:
     # Nothing is released until the VM boots end to end (DESIGN.md §10); the
     # binary is built from the tree until then.
     - ./cmd/zerogravity
+    - ./cmd/zerogravity-agent

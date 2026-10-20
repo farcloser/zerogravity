@@ -271,6 +271,51 @@
       "algorithm": "sha256"
     },
     {
+      "id": "github_release/github.com/protocolbuffers/protobuf-go/v1.36.12/protoc-gen-go.v1.36.12.darwin.arm64.tar.gz",
+      "checksum": "951D1D2558BBBC8C6680DCB6D302263FA35302CB6E1FCCAD297A50D21D827F2B",
+      "algorithm": "sha256"
+    },
+    {
+      "id": "github_release/github.com/protocolbuffers/protobuf-go/v1.36.12/protoc-gen-go.v1.36.12.linux.amd64.tar.gz",
+      "checksum": "14ABE70D1557026D3DCE6676B7A44D3ADA91D79902C71CB075FBB8D315943320",
+      "algorithm": "sha256"
+    },
+    {
+      "id": "github_release/github.com/protocolbuffers/protobuf-go/v1.36.12/protoc-gen-go.v1.36.12.linux.arm64.tar.gz",
+      "checksum": "BF385E22E18661B044F7B96EC28384F3F76AA6DA10E956B450FFB949306768DE",
+      "algorithm": "sha256"
+    },
+    {
+      "id": "github_release/github.com/protocolbuffers/protobuf-go/v1.36.12/protoc-gen-go.v1.36.12.windows.amd64.zip",
+      "checksum": "AB2AA2C53DF000AD47C6A546E56556D9ADB1767E38136F7C9A042E0A1C22793F",
+      "algorithm": "sha256"
+    },
+    {
+      "id": "github_release/github.com/protocolbuffers/protobuf-go/v1.36.12/protoc-gen-go.v1.36.12.windows.arm64.zip",
+      "checksum": "E1BE29AC7430F3258DF1F14098715C80E7470DEAE0D204F3D8D4FB4A770B0947",
+      "algorithm": "sha256"
+    },
+    {
+      "id": "github_release/github.com/protocolbuffers/protobuf/v36.2/protoc-36.2-linux-aarch_64.zip",
+      "checksum": "8B8F18BD2B30346EFBC698DD5A73DD7C805F3EF8380F6DFC95C768F3F1852F6A",
+      "algorithm": "sha256"
+    },
+    {
+      "id": "github_release/github.com/protocolbuffers/protobuf/v36.2/protoc-36.2-linux-x86_64.zip",
+      "checksum": "121F6C7AFE1D4D0E3EA6AAB9432038599250134CBF4474CB1167D2C7DECD4278",
+      "algorithm": "sha256"
+    },
+    {
+      "id": "github_release/github.com/protocolbuffers/protobuf/v36.2/protoc-36.2-osx-aarch_64.zip",
+      "checksum": "9CD98A532C5C5E0C4161314DE0225DE27E4C8A323917B6EA7B1B714D3AE23466",
+      "algorithm": "sha256"
+    },
+    {
+      "id": "github_release/github.com/protocolbuffers/protobuf/v36.2/protoc-36.2-win64.zip",
+      "checksum": "F0C128DC0D8492ECEECE83BB459A4C0E316764B929FFBF1AA416357FD644EDD3",
+      "algorithm": "sha256"
+    },
+    {
       "id": "github_release/github.com/quint-co/quint/v0.33.0/quint-linux-amd64",
       "checksum": "79EAA33AEB28A72681122656974557DB553F4D01B792E22727075B41806DB4D3",
       "algorithm": "sha256"
