@@ -8,11 +8,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/alecthomas/kong"
 	"github.com/mycophonic/primordium/app/logger"
-	"github.com/mycophonic/primordium/app/shutdown"
 )
 
 const appName = "zerogravity"
@@ -37,7 +39,17 @@ type CLI struct {
 }
 
 func main() {
-	ctx := shutdown.SetDefaults(context.Background())
+	os.Exit(run())
+}
+
+// run is main without the exit, so that the deferred signal reset runs.
+func run() int {
+	// A signal cancels the context and nothing more: `run` turns it into the
+	// guest's clean shutdown with its own grace, then returns, so a stopped VM
+	// exits 0 and a guest is never torn down mid-shutdown by a deadline here.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	logger.SetDefaultsForLogger(ctx)
 
 	var root CLI
@@ -47,11 +59,20 @@ func main() {
 		kong.Description("Install, clone and boot macOS virtual machines inside a project."),
 		kong.UsageOnError(),
 		kong.Vars{"version": version},
+		kong.BindTo(ctx, (*context.Context)(nil)),
 	)
 
-	shutdown.Run(ctx, func(ctx context.Context) error {
-		return kctx.Run(ctx, &root)
-	})
+	if err := kctx.Run(&root); err != nil {
+		if status, isStatus := errors.AsType[exitStatusError](err); isStatus {
+			return int(status)
+		}
+
+		slog.ErrorContext(ctx, "fatal", slog.Any("error", err))
+
+		return 1
+	}
+
+	return 0
 }
 
 // ErrNotImplemented is what a command returns while its design is written and

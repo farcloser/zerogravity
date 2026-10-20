@@ -343,6 +343,31 @@ files, ssh does the rest.
 **Key delivery at boot.** `run --ssh-key` hands the key to `Configure`; the
 agent writes it and nothing about the caller persists in the base.
 
+### Decisions made while building, 2026-10-19
+
+- **A control socket beside the lock.** A virtio socket belongs to the process
+  that owns the machine, so `exec`, `ip` and `ssh` from another process could
+  not reach the agent. `run` listens on `control.sock` in the VM directory and
+  relays each connection to the agent's vsock port; the other commands dial
+  that. The lock, not the socket file, says a VM is running.
+- **The agent travels beside the binary, not inside it.** `just build` writes
+  `zerogravity` and `zerogravity-agent` side by side; install reads the agent
+  from the binary's own directory. Embedding would have tied every `go build`
+  to a prior agent build, as ossein's embeds do; a sibling file costs nothing
+  and keeps `go build ./...` honest.
+- **The agent is installed over one ssh with the generated password**, in
+  install's last step: upload, `sudo -S` with the password on stdin, launchd
+  daemon, then the agent is proven over vsock and asked to turn password ssh
+  off. The password never travels again.
+- **Every VM has its own MAC**, generated at install and again on clone, so
+  the one DHCP lease on its network is found by it when no agent runs yet.
+- **The running process records its pid in the lock file**, in place, never
+  by rename: `stop` reads it and sends SIGTERM, which `run` turns into the
+  guest's clean shutdown.
+- **Install refuses before spending anything** when the host is older than
+  macOS 27, read from `SystemVersion.plist` rather than a sysctl the sandbox
+  denies.
+
 ## 9. GUI
 
 `--gui` opens a window on the VM through the framework's view, which
@@ -381,6 +406,46 @@ creates go-vz, since nothing runs without it.
 - **S6. ossein on go-vz.** ossein swaps its in-tree fork for the module; its
   test suite and a container boot prove nothing changed. Closes the sharing
   question for good.
+
+### Running the spikes
+
+Boots run on a macOS 27 host, outside CI. Each is one command from the
+zerogravity directory, after
+`just build`; the output of each is what the spike measures, and goes into
+this file as a line under the spike.
+
+```sh
+# S1: unattended install, restore to ssh. Prints each step and its time.
+time .build/zerogravity install base
+
+# S2: the agent over vsock; `ip` comes from the agent, not from a lease.
+.build/zerogravity run base &
+.build/zerogravity ip base
+.build/zerogravity exec base -- sw_vers
+.build/zerogravity stop base
+
+# S3: clone and disk. Instant clone, then 5 GB written in the guest.
+time .build/zerogravity clone base work
+du -sh .build/zerogravity/base .build/zerogravity/work
+.build/zerogravity run work &
+.build/zerogravity exec work -- dd if=/dev/zero of=/tmp/five bs=1m count=5000
+du -sh .build/zerogravity/work
+.build/zerogravity stop work
+
+# S4: virtio-fs correctness and speed, the repository shared in.
+.build/zerogravity run work --share "$PWD" &
+.build/zerogravity exec work -- ls "/Volumes/My Shared Files/zerogravity"
+.build/zerogravity exec work -- git -C "/Volumes/My Shared Files/zerogravity" status
+.build/zerogravity stop work
+
+# S5: lifecycle. A second run while one holds the lock refuses; stop ends it.
+.build/zerogravity run work &
+.build/zerogravity run work
+.build/zerogravity stop work
+
+# A window on a running VM, auto-login or not.
+.build/zerogravity run work --gui
+```
 
 ## 11. Recommendations taken as decisions
 

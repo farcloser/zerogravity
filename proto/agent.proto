@@ -1,0 +1,71 @@
+// The contract between zerogravity on the host and its agent in the guest,
+// over Connect on a virtio socket. Four calls, nothing else: the share does
+// files, ssh does the rest.
+syntax = "proto3";
+
+package zerogravity.agent.v1;
+
+option go_package = "github.com/farcloser/zerogravity/internal/agentrpc;agentrpc";
+
+service Agent {
+  // Ready answers as soon as the agent runs: who the guest is and how to reach it.
+  rpc Ready(ReadyRequest) returns (ReadyResponse);
+  // Configure applies what `zerogravity run` was given, once per boot.
+  rpc Configure(ConfigureRequest) returns (ConfigureResponse);
+  // Exec runs a command and streams its output back, then its exit status.
+  rpc Exec(ExecRequest) returns (stream ExecResponse);
+  // Shutdown asks the guest to shut down cleanly.
+  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
+}
+
+message ReadyRequest {}
+
+message ReadyResponse {
+  // revision is the protocol revision the agent speaks; the host refuses a mismatch.
+  string revision = 1;
+  // version is the agent's build version.
+  string version = 2;
+  // hostname is the guest's.
+  string hostname = 3;
+  // addresses are the guest's IPv4 addresses, the vmnet one among them.
+  repeated string addresses = 4;
+  // macos is the guest's macOS version.
+  string macos = 5;
+}
+
+message ConfigureRequest {
+  // user is the account to configure.
+  string user = 1;
+  // authorized_keys replaces the account's ~/.ssh/authorized_keys when set.
+  string authorized_keys = 2;
+  // hostname sets the guest's host name when set.
+  string hostname = 3;
+  // disable_password_ssh turns password authentication off in sshd.
+  bool disable_password_ssh = 4;
+}
+
+message ConfigureResponse {}
+
+message ExecRequest {
+  // argv is the command; argv[0] is resolved on the guest's PATH.
+  repeated string argv = 1;
+  // env is added to the agent's environment, KEY=VALUE.
+  repeated string env = 2;
+  // stdin is handed to the command whole, then closed.
+  bytes stdin = 3;
+  // user runs the command as that account instead of the agent's.
+  string user = 4;
+}
+
+message ExecResponse {
+  oneof event {
+    bytes stdout = 1;
+    bytes stderr = 2;
+    // exit is sent last, once.
+    int32 exit = 3;
+  }
+}
+
+message ShutdownRequest {}
+
+message ShutdownResponse {}

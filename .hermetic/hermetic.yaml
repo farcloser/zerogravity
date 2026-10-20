@@ -26,6 +26,12 @@ packages:
   # manifest once and Renovate's here afterwards: a standard-library fix
   # must not wait for a limen release. Not in the import, on purpose.
   - name: golang/go@go1.27.2
+  # The agent's contract is protobuf over Connect; the generator for the
+  # Connect half is built from the root module (`just proto`), so it is the
+  # runtime's own version and cannot skew from it. limen keeps tool
+  # directives out of the root go.mod, hence no pin for it here or there.
+  - name: protocolbuffers/protobuf/protoc@v36.2
+  - name: protocolbuffers/protobuf-go/protoc-gen-go@v1.36.12
   # The project's own tools go here, above the import: extras, and any
   # canonical tool at a version of the project's choosing (the resolver takes a
   # package's first declaration, so an entry here overrides the import's).
