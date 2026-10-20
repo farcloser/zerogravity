@@ -4,6 +4,7 @@ package machine_test
 
 import (
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,6 +21,7 @@ func validConfig() *machine.Config {
 		User:     "zg",
 		Password: "generated",
 		MacOS:    "27.0",
+		MAC:      "02:aa:bb:cc:dd:ee",
 	}
 }
 
@@ -64,6 +66,7 @@ func TestConfigValidation(t *testing.T) {
 		"no disk":    func(c *machine.Config) { c.Disk = 0 },
 		"no display": func(c *machine.Config) { c.Display = machine.Display{} },
 		"no user":    func(c *machine.Config) { c.User = "" },
+		"bad mac":    func(c *machine.Config) { c.MAC = "not-a-mac" },
 	}
 
 	for name, breakIt := range cases {
@@ -124,6 +127,11 @@ func TestLockIsExclusive(t *testing.T) {
 	// this process conflicts the way another process would.
 	if _, second := dir.Lock(); !errors.Is(second, machine.ErrRunning) {
 		t.Fatalf("second Lock = %v, want ErrRunning", second)
+	}
+
+	pid, pidErr := dir.RunningPID()
+	if pidErr != nil || pid != os.Getpid() {
+		t.Fatalf("RunningPID = %d, %v; want this process's pid", pid, pidErr)
 	}
 
 	if err := machine.Unlock(lock); err != nil {
@@ -190,6 +198,10 @@ func TestCloneCopiesFilesAndRecordsBase(t *testing.T) {
 		t.Fatalf("Base = %q, want the given base", config.Base)
 	}
 
+	if config.MAC == "02:aa:bb:cc:dd:ee" || config.MAC == "" {
+		t.Fatalf("MAC = %q, want a fresh address for the clone", config.MAC)
+	}
+
 	// Writing to the clone leaves the source alone: copy on write.
 	if writeErr := os.WriteFile(clone.File(machine.DiskFile), []byte("changed"), 0o600); writeErr != nil {
 		t.Fatalf("WriteFile: %v", writeErr)
@@ -236,5 +248,76 @@ func TestRemoveRefusesRunning(t *testing.T) {
 
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("directory still there after Remove: %v", err)
+	}
+}
+
+// TestNewMACIsLocalUnicastAndFresh pins the two bits the lease lookup and the
+// framework both rely on: locally administered set, multicast clear, and no
+// two calls alike.
+func TestNewMACIsLocalUnicastAndFresh(t *testing.T) {
+	t.Parallel()
+
+	first, err := machine.NewMAC()
+	if err != nil {
+		t.Fatalf("NewMAC: %v", err)
+	}
+
+	second, err := machine.NewMAC()
+	if err != nil {
+		t.Fatalf("NewMAC: %v", err)
+	}
+
+	for _, mac := range []net.HardwareAddr{first, second} {
+		if _, parseErr := net.ParseMAC(mac.String()); parseErr != nil {
+			t.Fatalf("NewMAC = %s, does not parse: %v", mac, parseErr)
+		}
+
+		if mac[0]&0x02 == 0 {
+			t.Fatalf("NewMAC = %s, locally administered bit clear", mac)
+		}
+
+		if mac[0]&0x01 != 0 {
+			t.Fatalf("NewMAC = %s, multicast bit set", mac)
+		}
+	}
+
+	if first.String() == second.String() {
+		t.Fatalf("two NewMAC calls gave the same address %s", first)
+	}
+}
+
+// TestRunningProbeLeavesNoPid pins that a probe never writes its own pid where
+// a stop would read it, and that Unlock clears the pid a run wrote.
+func TestRunningProbeLeavesNoPid(t *testing.T) {
+	t.Parallel()
+
+	dir, err := machine.Create(filepath.Join(t.TempDir(), "vm"))
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if running, probeErr := dir.Running(); probeErr != nil || running {
+		t.Fatalf("Running on a fresh directory = %v, %v; want false", running, probeErr)
+	}
+
+	lock, err := dir.Lock()
+	if err != nil {
+		t.Fatalf("Lock: %v", err)
+	}
+
+	if running, probeErr := dir.Running(); probeErr != nil || !running {
+		t.Fatalf("Running while locked = %v, %v; want true", running, probeErr)
+	}
+
+	if pid, pidErr := dir.RunningPID(); pidErr != nil || pid != os.Getpid() {
+		t.Fatalf("RunningPID after a probe = %d, %v; the probe must not have written", pid, pidErr)
+	}
+
+	if err := machine.Unlock(lock); err != nil {
+		t.Fatalf("Unlock: %v", err)
+	}
+
+	if _, pidErr := dir.RunningPID(); pidErr == nil {
+		t.Fatal("RunningPID after Unlock found a pid; Unlock must clear it")
 	}
 }

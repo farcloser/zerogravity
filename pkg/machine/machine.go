@@ -7,11 +7,15 @@
 package machine
 
 import (
+	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/forkcloser/xos"
 	"github.com/mycophonic/primordium/filesystem"
@@ -36,6 +40,8 @@ const (
 	ConfigFile = "config.json"
 	// LockFile is held by the zerogravity process running the VM.
 	LockFile = "run.lock"
+	// KnownHostsFile pins the guest's ssh host key, captured at install.
+	KnownHostsFile = "known_hosts"
 )
 
 // Files are the framework files a clone takes from its base, in the order
@@ -79,13 +85,18 @@ type Config struct {
 	Display Display `json:"display"`
 	// User is the guest account the provisioned first boot created.
 	User string `json:"user"`
-	// Password is that account's password, generated at install, kept for
-	// console login; ssh uses keys. The file is mode 0600.
+	// Password is that account's password, generated at install. After install
+	// the agent turns password ssh off, so it serves console login and sudo
+	// only; a clone carries it along with the rest of the config. The file is
+	// mode 0600.
 	Password string `json:"password,omitempty"`
 	// AutoLogin is whether the guest logs the account in at startup.
 	AutoLogin bool `json:"autoLogin"`
 	// MacOS is the guest's macOS version, from the restore image.
 	MacOS string `json:"macos,omitempty"`
+	// MAC is the guest network device's address, the key to its DHCP lease;
+	// every VM has its own, a clone included.
+	MAC string `json:"mac"`
 	// Agent is the version of the zerogravity agent installed in the guest,
 	// empty until install's last step ran.
 	Agent string `json:"agent,omitempty"`
@@ -120,8 +131,37 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("%w: user must be set", ErrConfig)
 	}
 
+	if _, err := net.ParseMAC(c.MAC); err != nil {
+		return fmt.Errorf(
+			"%w: mac %q: %w (a directory written before MACs were recorded is not usable)",
+			ErrConfig,
+			c.MAC,
+			err,
+		)
+	}
+
 	return nil
 }
+
+// NewMAC draws a locally administered unicast address for a guest's network
+// device: the lease the guest takes is found by it, so no two VMs share one.
+func NewMAC() (net.HardwareAddr, error) {
+	const octets = 6
+
+	addr := make(net.HardwareAddr, octets)
+	if _, err := rand.Read(addr); err != nil {
+		return nil, fmt.Errorf("generating mac: %w", err)
+	}
+
+	addr[0] = (addr[0] | macLocallyAdministered) & macUnicastMask
+
+	return addr, nil
+}
+
+const (
+	macLocallyAdministered = 0x02
+	macUnicastMask         = 0xfe
+)
 
 // Dir is a VM directory.
 type Dir struct {
@@ -234,16 +274,83 @@ func (d *Dir) Lock() (*os.File, error) {
 		return nil, fmt.Errorf("locking %s: %w", d.path, err)
 	}
 
+	// The pid goes into the locked file in place, never through a rename: a
+	// renamed-over file would leave the lock on an orphaned inode and let a
+	// second process lock the new one.
+	if err := writeInPlace(d.File(LockFile), strconv.Itoa(os.Getpid())+"\n"); err != nil {
+		_ = flock.Unlock(lock)
+
+		return nil, fmt.Errorf("recording pid in %s: %w", d.path, err)
+	}
+
 	return lock, nil
 }
 
-// Unlock releases a lock Lock returned.
+// RunningPID is the pid recorded by the process holding the lock, for a
+// stop request. Meaningful only after Lock returned ErrRunning.
+func (d *Dir) RunningPID() (int, error) {
+	data, err := xos.ReadFile(d.File(LockFile))
+	if err != nil {
+		return 0, fmt.Errorf("reading %s: %w", d.File(LockFile), err)
+	}
+
+	pid, err := strconv.Atoi(string(bytes.TrimSpace(data)))
+	if err != nil || pid <= 0 {
+		return 0, fmt.Errorf("%w: %s holds no pid", ErrRunning, d.File(LockFile))
+	}
+
+	return pid, nil
+}
+
+func writeInPlace(path, content string) error {
+	file, err := xos.OpenFile(path, os.O_WRONLY|os.O_TRUNC, lockMode)
+	if err != nil {
+		return err //nolint:wrapcheck // the caller names the file
+	}
+
+	if _, err := file.WriteString(content); err != nil {
+		_ = file.Close()
+
+		return err //nolint:wrapcheck // the caller names the file
+	}
+
+	return file.Close() //nolint:wrapcheck // the caller names the file
+}
+
+// Unlock releases a lock Lock returned, and clears the pid first so that only
+// a run that crashed leaves one behind.
 func Unlock(lock *os.File) error {
+	// The lock's own descriptor is read-only; the file is cleared by path,
+	// while the flock is still held so no reader sees a half-written pid.
+	_ = os.Truncate(lock.Name(), 0)
+
 	if err := flock.Unlock(lock); err != nil {
 		return fmt.Errorf("unlocking: %w", err)
 	}
 
 	return nil
+}
+
+// Running reports whether a zerogravity process holds the VM. It takes the
+// flock and releases it without writing anything: a probe must not leave its
+// own pid where a stop would read it.
+func (d *Dir) Running() (bool, error) {
+	lock, err := flock.TryLock(d.File(LockFile))
+	if err != nil {
+		if errors.Is(err, flock.ErrLockWouldBlock) {
+			return true, nil
+		}
+
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("probing %s: %w", d.path, err)
+	}
+
+	_ = flock.Unlock(lock)
+
+	return false, nil
 }
 
 // Clone makes dst from src: every framework file is an APFS clone of the
@@ -264,18 +371,27 @@ func Clone(src *Dir, dst, base string) (*Dir, error) {
 
 	for _, name := range Files() {
 		from := src.File(name)
-		if _, err := os.Stat(from); errors.Is(err, os.ErrNotExist) {
+		if _, err = os.Stat(from); errors.Is(err, os.ErrNotExist) {
 			continue
 		}
 
-		if err := unix.Clonefile(from, target.File(name), unix.CLONE_NOFOLLOW); err != nil {
+		if err = unix.Clonefile(from, target.File(name), unix.CLONE_NOFOLLOW); err != nil {
 			_ = os.RemoveAll(dst)
 
 			return nil, fmt.Errorf("cloning %s into %s: %w", from, dst, err)
 		}
 	}
 
+	mac, err := NewMAC()
+	if err != nil {
+		_ = os.RemoveAll(dst)
+
+		return nil, err
+	}
+
 	config.Base = base
+	config.MAC = mac.String()
+
 	if err := target.WriteConfig(config); err != nil {
 		_ = os.RemoveAll(dst)
 
