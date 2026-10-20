@@ -9,8 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-
-	"github.com/mycophonic/primordium/filesystem/dirs"
 )
 
 // AppName names the cache directory and the per-project build subdirectory.
@@ -27,18 +25,17 @@ var ErrName = errors.New("invalid vm name")
 
 var namePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
-// Cache is the host cache root, ~/Library/Caches/zerogravity on macOS, created
-// private to the user when absent. Restore images and bases live under it,
-// content-addressed.
+// Cache is the host cache root, ~/Library/Caches/zerogravity on macOS. Restore
+// images and bases live under it, content-addressed. A cache, not application
+// data: the user's cache cleaners may empty it, and everything in it can be
+// fetched or installed again. Whoever writes into it creates it.
 func Cache() (string, error) {
-	dirs.SetAppName(AppName)
-
-	dir, err := dirs.DataDir()
+	base, err := os.UserCacheDir()
 	if err != nil {
 		return "", fmt.Errorf("cache directory: %w", err)
 	}
 
-	return dir, nil
+	return filepath.Join(base, AppName), nil
 }
 
 // Project is the root of the project a VM belongs to: the given directory, or
