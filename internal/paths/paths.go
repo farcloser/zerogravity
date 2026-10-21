@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 // AppName names the cache directory and the per-project build subdirectory.
@@ -24,6 +25,18 @@ const buildDir = ".build"
 var ErrName = errors.New("invalid vm name")
 
 var namePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+
+// ErrIPSWName reports a restore image name the link refuses: it must be a
+// single path component ending in .ipsw, since Virtualization takes the
+// file's type from that extension.
+var ErrIPSWName = errors.New("invalid restore image name")
+
+const (
+	// ipswDir holds the links under the cache root.
+	ipswDir      = "ipsw"
+	ipswSuffix   = ".ipsw"
+	cacheDirMode = 0o700
+)
 
 // Cache is the host cache root, ~/Library/Caches/zerogravity on macOS. Restore
 // images and bases live under it, content-addressed. A cache, not application
@@ -83,4 +96,33 @@ func ValidName(name string) error {
 	}
 
 	return nil
+}
+
+// IPSWLink makes <cache>/ipsw/<name> a hard link to blob and returns its path.
+// Virtualization reads a restore image's type from the .ipsw extension and the
+// content store keeps its blob under a bare name, so the blob is presented
+// through this link. An existing entry under name, a stale link to a blob the
+// store has since reclaimed included, is replaced. A hard link, since that is
+// the shape known to load; both paths are under the cache root, one volume.
+func IPSWLink(cache, name, blob string) (string, error) {
+	if name == "" || name != filepath.Base(name) || !strings.HasSuffix(name, ipswSuffix) || name == ipswSuffix {
+		return "", fmt.Errorf("%w: %q", ErrIPSWName, name)
+	}
+
+	dir := filepath.Join(cache, ipswDir)
+	if err := os.MkdirAll(dir, cacheDirMode); err != nil {
+		return "", fmt.Errorf("restore image link: %w", err)
+	}
+
+	link := filepath.Join(dir, name)
+
+	if err := os.Remove(link); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("restore image link: %w", err)
+	}
+
+	if err := os.Link(blob, link); err != nil {
+		return "", fmt.Errorf("restore image link: %w", err)
+	}
+
+	return link, nil
 }
