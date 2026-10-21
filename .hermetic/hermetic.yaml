@@ -25,7 +25,7 @@ packages:
   # The Go toolchain is the repository's own pin, seeded from limen's own
   # manifest once and Renovate's here afterwards: a standard-library fix
   # must not wait for a limen release. Not in the import, on purpose.
-  - name: golang/go@go1.27.2
+  - name: golang/go@go1.27.3
   # The agent's contract is protobuf over Connect; the generator for the
   # Connect half is built from the root module (`just proto`), so it is the
   # runtime's own version and cannot skew from it. limen keeps tool
