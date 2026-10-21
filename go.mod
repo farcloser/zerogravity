@@ -12,7 +12,10 @@ require (
 	google.golang.org/protobuf v1.36.12
 )
 
-require golang.org/x/mod v0.42.0 // indirect
+require (
+	github.com/forkcloser/blake3 v1.1.0 // indirect
+	golang.org/x/mod v0.42.0 // indirect
+)
 
 require (
 	github.com/forkcloser/vz v0.0.0-20261019145711-b1461fdd2dfd

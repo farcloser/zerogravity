@@ -113,8 +113,9 @@ running VM through a lock file under the VM directory (primordium
 ### Layout
 
 ```
-~/Library/Caches/zerogravity/            host cache, content-addressed
-  ipsw/<sha256>                          restore images
+~/Library/Caches/zerogravity/            host cache: primordium's content store
+  index.dat                              restore image URL -> digest
+  cache/<blake3>                         restore images, by content
   bases/<sha256>/{disk.img,nvram.bin,aux.bin,identifier,config.json}
 <project>/.build/zerogravity/<name>/     one VM
   disk.img        APFS clone of the base's disk.img (copy-on-write, instant)
@@ -136,9 +137,10 @@ enters the agent sandbox's write list the same way.
   writes of `config.json`, the run lock, directory creation with the right
   umask. `filesystem/dirs` for the cache location.
 - `store/content` and `digest` for the host cache: IPSWs and bases are stored
-  and looked up by sha256, verified on use, never trusted by name.
-- `network/transporter` for the IPSW download: backoff, retry, resumable
-  where Apple's CDN allows.
+  and looked up by digest, verified on use, never trusted by name.
+- `network/transporter` for the IPSW download: backoff, retry, one connection
+  pool. Resuming a body cut mid-way is not a transport's job and sits above it,
+  in `internal/download`.
 - `bytesize` for `--memory 8GiB`; `system/machine` for host CPU and memory;
   `app/logger` and `app/shutdown` for the process lifecycle, so a run
   interrupted by signal stops the guest cleanly and releases the network.
@@ -235,9 +237,13 @@ provisioning binding and the lifecycle fixes are offered upstream.
 One command, no questions, no window. Four steps, each resumable from the
 cache if the previous run got that far.
 
-1. **Restore image.** `--ipsw latest` asks the framework for the latest
-   supported restore image and downloads it into the cache by digest;
-   `--ipsw <path>` uses a file. The image's most featureful supported
+1. **Restore image.** `--ipsw latest` asks the framework for the URL of the
+   latest supported restore image and acquires it from the content store by
+   that URL: a miss streams the download into the store, which hashes it and
+   commits it under its digest; a hit costs a lookup. The stream resumes a
+   body cut mid-way with a Range request held to the first response's ETag,
+   so the store never hashes a splice of two publications. The pin on the
+   blob is held through the restore. `--ipsw <path>` uses a file. The image's most featureful supported
    configuration gives the hardware model and the minimum CPU and memory.
 2. **Restore.** Create the platform configuration (hardware model, fresh
    machine identifier, auxiliary storage), a disk image of the requested size,
@@ -344,6 +350,14 @@ files, ssh does the rest.
 agent writes it and nothing about the caller persists in the base.
 
 ### Decisions made while building, 2026-10-19
+
+- **The restore image is fetched by us, not by the framework.** The
+  framework's `FetchLatestSupportedMacOSRestoreImage` is one connection with
+  no resume; a real run lost 54% of 15 GiB to one "unexpected EOF". The
+  framework now gives the URL only; `internal/download` streams it and
+  resumes a cut in place, and the content store owns the bytes. The cost: a
+  run killed mid-download starts over, since the store stages per run and a
+  partial file is never kept under a name.
 
 - **A control socket beside the lock.** A virtio socket belongs to the process
   that owns the machine, so `exec`, `ip` and `ssh` from another process could

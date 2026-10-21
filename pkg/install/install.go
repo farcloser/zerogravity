@@ -10,9 +10,7 @@ package install
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -20,14 +18,15 @@ import (
 	"net/netip"
 	"os"
 	"path"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/forkcloser/vz"
-	"github.com/forkcloser/xos"
+	"github.com/mycophonic/primordium/digest"
 	"github.com/mycophonic/primordium/filesystem"
+	"github.com/mycophonic/primordium/human"
+	"github.com/mycophonic/primordium/store/content"
 
+	"github.com/farcloser/zerogravity/internal/download"
 	"github.com/farcloser/zerogravity/internal/hostos"
 	"github.com/farcloser/zerogravity/internal/lease"
 	"github.com/farcloser/zerogravity/pkg/machine"
@@ -74,9 +73,7 @@ type Options struct {
 }
 
 const (
-	ipswDir         = "ipsw"
 	ipswMode        = 0o600
-	cacheDirMode    = 0o700
 	passwordBytes   = 24
 	progressEvery   = 2 * time.Second
 	leasePoll       = time.Second
@@ -111,10 +108,13 @@ func Install(ctx context.Context, cache, dir string, opts Options) error {
 		return fmt.Errorf("%w: macOS %d, the provisioned first boot needs macOS %d", ErrHost, major, hostMinimum)
 	}
 
-	ipsw, err := restoreImage(ctx, cache, opts.IPSW, progress)
+	ipsw, release, err := restoreImage(ctx, cache, opts.IPSW, progress)
 	if err != nil {
 		return err
 	}
+
+	// Held through the restore: the installer reads the image from the cache.
+	defer release()
 
 	image, err := vz.LoadMacOSRestoreImageFromPath(ipsw)
 	if err != nil {
@@ -160,123 +160,76 @@ func Install(ctx context.Context, cache, dir string, opts Options) error {
 	return target.WriteConfig(config)
 }
 
-// restoreImage resolves opts.IPSW to a file in the cache: a given path is used
-// as is; Latest is fetched once per Apple file name into <cache>/ipsw, with a
-// sha256 sidecar that a later run verifies before trusting the file. The name
-// comes from one framework call and the bytes from another; should Apple
-// publish between the two, the file under the older name holds the newer
-// build and the sidecar pins what arrived, which is harmless: both are
-// macOS 27 or newer, and the base records the build it got.
-func restoreImage(ctx context.Context, cache, requested string, progress io.Writer) (string, error) {
+// restoreImage resolves opts.IPSW to a file: a given path is used as is; Latest
+// asks the framework for the URL of the latest image the host supports and
+// takes the bytes from the content store under the cache root, keyed by that
+// URL, fetched once and held to their digest after. The returned release must
+// be called once the file is no longer read: it is the store's pin, and the
+// store's garbage collection respects a pinned blob. Should Apple publish
+// between the URL and the bytes, the URL names the older build and the newer
+// is what the store holds, which is harmless: both are macOS 27 or newer, and
+// the base records the build it got.
+func restoreImage(
+	ctx context.Context, cache, requested string, progress io.Writer,
+) (ipsw string, release func(), err error) {
 	if requested != Latest {
-		if _, err := os.Stat(requested); err != nil {
-			return "", fmt.Errorf("%w: %w", ErrRestoreImage, err)
+		if _, err = os.Stat(requested); err != nil {
+			return "", nil, fmt.Errorf("%w: %w", ErrRestoreImage, err)
 		}
 
-		return requested, nil
+		return requested, func() {}, nil
 	}
 
 	url, err := vz.GetLatestSupportedMacOSRestoreImageURL()
 	if err != nil {
-		return "", fmt.Errorf("%w: latest: %w", ErrRestoreImage, err)
+		return "", nil, fmt.Errorf("%w: latest: %w", ErrRestoreImage, err)
 	}
 
-	name := path.Base(url)
-	if name == "" || name == "." || name == "/" || !strings.HasSuffix(name, ".ipsw") {
-		return "", fmt.Errorf("%w: unexpected restore image url %q", ErrRestoreImage, url)
-	}
-
-	dir := filepath.Join(cache, ipswDir)
-	if err = os.MkdirAll(dir, cacheDirMode); err != nil {
-		return "", fmt.Errorf("%w: cache: %w", ErrRestoreImage, err)
-	}
-
-	file := filepath.Join(dir, name)
-	sidecar := file + ".sha256"
-
-	if verified, sidecarErr := verifySidecar(file, sidecar); sidecarErr == nil && verified {
-		fmt.Fprintf(progress, "restore image: %s, cached\n", name)
-
-		return file, nil
-	}
-
-	fmt.Fprintf(progress, "restore image: fetching %s\n", url)
-
-	if err = fetch(ctx, url, file, progress); err != nil {
-		return "", err
-	}
-
-	sum, err := fileDigest(file)
+	store, err := content.New(cache, nil)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrRestoreImage, err)
+		return "", nil, fmt.Errorf("%w: cache: %w", ErrRestoreImage, err)
 	}
 
-	if err := filesystem.WriteFile(sidecar, []byte(sum+"\n"), ipswMode); err != nil {
-		return "", fmt.Errorf("%w: sidecar: %w", ErrRestoreImage, err)
-	}
+	fetched := false
 
-	return file, nil
-}
+	pin, err := store.AcquireFile(url, digest.Digest{}, func() (io.ReadCloser, error) {
+		fetched = true
 
-func fetch(ctx context.Context, _, file string, progress io.Writer) error {
-	// The framework fetches the latest image itself; the URL is for the cache
-	// name and the message, the framework knows where it comes from.
-	_ = os.Remove(file)
+		fmt.Fprintf(progress, "restore image: fetching %s\n", url)
 
-	reader, err := vz.FetchLatestSupportedMacOSRestoreImage(ctx, file)
-	if err != nil {
-		return fmt.Errorf("%w: fetch: %w", ErrRestoreImage, err)
-	}
+		stream, openErr := download.Open(ctx, url, func(done, total int64) {
+			if total <= 0 {
+				fmt.Fprintf(progress, "restore image: %s\n", human.BinarySize(float64(done)))
 
-	ticker := time.NewTicker(progressEvery)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("%w: fetch: %w", ErrRestoreImage, ctx.Err())
-		case <-reader.Finished():
-			if err := reader.Err(); err != nil {
-				return fmt.Errorf("%w: fetch: %w", ErrRestoreImage, err)
+				return
 			}
 
-			fmt.Fprint(progress, "restore image: fetched\n")
-
-			return nil
-		case <-ticker.C:
-			fmt.Fprintf(progress, "restore image: %3.0f%%\n", reader.FractionCompleted()*100) //nolint:mnd // percent
+			fmt.Fprintf(progress, "restore image: %3.0f%%\n", float64(done)/float64(total)*100) //nolint:mnd // percent
+		})
+		if openErr != nil {
+			return nil, fmt.Errorf("%w: %w", ErrRestoreImage, openErr)
 		}
-	}
-}
 
-func verifySidecar(file, sidecar string) (bool, error) {
-	want, err := xos.ReadFile(sidecar)
+		return stream, nil
+	})
 	if err != nil {
-		return false, fmt.Errorf("reading %s: %w", sidecar, err)
+		_ = store.Close()
+
+		return "", nil, fmt.Errorf("%w: %s: %w", ErrRestoreImage, path.Base(url), err)
 	}
 
-	got, err := fileDigest(file)
-	if err != nil {
-		return false, err
+	if fetched {
+		fmt.Fprint(progress, "restore image: fetched\n")
+	} else {
+		fmt.Fprintf(progress, "restore image: %s, cached\n", path.Base(url))
 	}
 
-	return strings.TrimSpace(string(want)) == got, nil
-}
-
-func fileDigest(file string) (string, error) {
-	handle, err := xos.Open(file)
-	if err != nil {
-		return "", fmt.Errorf("opening %s: %w", file, err)
+	release = func() {
+		_ = pin.Release()
+		_ = store.Close()
 	}
 
-	defer func() { _ = handle.Close() }()
-
-	hash := sha256.New()
-	if _, err := io.Copy(hash, handle); err != nil {
-		return "", fmt.Errorf("hashing %s: %w", file, err)
-	}
-
-	return hex.EncodeToString(hash.Sum(nil)), nil
+	return pin.Path, release, nil
 }
 
 func checkRequirements(requirements *vz.MacOSConfigurationRequirements, opts Options) error {
