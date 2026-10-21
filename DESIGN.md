@@ -117,7 +117,7 @@ running VM through a lock file under the VM directory (primordium
   index.dat                              restore image URL -> digest
   cache/<blake3>                         restore images, by content
   bases/<sha256>/{disk.img,nvram.bin,aux.bin,identifier,config.json}
-<project>/.build/zerogravity/<name>/     one VM
+<project>/.build/vms/<name>/            one VM
   disk.img        APFS clone of the base's disk.img (copy-on-write, instant)
   nvram.bin       EFI variable store, per VM
   aux.bin         Mac auxiliary storage, per VM
@@ -440,10 +440,10 @@ time .build/zerogravity install base
 
 # S3: clone and disk. Instant clone, then 5 GB written in the guest.
 time .build/zerogravity clone base work
-du -sh .build/zerogravity/base .build/zerogravity/work
+du -sh .build/vms/base .build/vms/work
 .build/zerogravity run work &
 .build/zerogravity exec work -- dd if=/dev/zero of=/tmp/five bs=1m count=5000
-du -sh .build/zerogravity/work
+du -sh .build/vms/work
 .build/zerogravity stop work
 
 # S4: virtio-fs correctness and speed, the repository shared in.

@@ -35,7 +35,7 @@ func TestVMUnderProjectBuildDir(t *testing.T) {
 		t.Fatalf("VM: %v", err)
 	}
 
-	want := filepath.Join(project, ".build", "zerogravity", "base")
+	want := filepath.Join(project, ".build", "vms", "base")
 	if dir != want {
 		t.Fatalf("VM = %q, want %q", dir, want)
 	}
