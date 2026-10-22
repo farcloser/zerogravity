@@ -58,9 +58,13 @@ func Project(dir string) (string, error) {
 	return abs, nil
 }
 
-// VMs is the directory holding a project's VMs: <project>/.build/zerogravity.
+// vmsDir is the VMs' directory under .build. Not the application's name: in
+// this repository `just build` writes the binary at .build/zerogravity.
+const vmsDir = "vms"
+
+// VMs is the directory holding a project's VMs: <project>/.build/vms.
 func VMs(project string) string {
-	return filepath.Join(project, buildDir, AppName)
+	return filepath.Join(project, buildDir, vmsDir)
 }
 
 // VM is one VM's directory under the project, after the name passed
