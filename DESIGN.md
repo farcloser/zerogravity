@@ -116,6 +116,7 @@ running VM through a lock file under the VM directory (primordium
 ~/Library/Caches/zerogravity/            host cache: primordium's content store
   index.dat                              restore image URL -> digest
   cache/<blake3>                         restore images, by content
+  ipsw/<Apple file name>                 hard link to the blob: the framework reads the type from the name
   bases/<sha256>/{disk.img,nvram.bin,aux.bin,identifier,config.json}
 <project>/.build/vms/<name>/            one VM
   disk.img        APFS clone of the base's disk.img (copy-on-write, instant)
@@ -243,7 +244,9 @@ cache if the previous run got that far.
    commits it under its digest; a hit costs a lookup. The stream resumes a
    body cut mid-way with a Range request held to the first response's ETag,
    so the store never hashes a splice of two publications. The pin on the
-   blob is held through the restore. `--ipsw <path>` uses a file. The image's most featureful supported
+   blob is held through the restore. The framework takes the file type from
+   the `.ipsw` extension and the store's blob has none, so the blob is
+   presented through a hard link under Apple's file name in the cache. `--ipsw <path>` uses a file. The image's most featureful supported
    configuration gives the hardware model and the minimum CPU and memory.
 2. **Restore.** Create the platform configuration (hardware model, fresh
    machine identifier, auxiliary storage), a disk image of the requested size,

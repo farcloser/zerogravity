@@ -29,6 +29,7 @@ import (
 	"github.com/farcloser/zerogravity/internal/download"
 	"github.com/farcloser/zerogravity/internal/hostos"
 	"github.com/farcloser/zerogravity/internal/lease"
+	"github.com/farcloser/zerogravity/internal/paths"
 	"github.com/farcloser/zerogravity/pkg/machine"
 	"github.com/farcloser/zerogravity/pkg/vm"
 )
@@ -229,7 +230,17 @@ func restoreImage(
 		_ = store.Close()
 	}
 
-	return pin.Path, release, nil
+	// The framework takes the file's type from its name and the store's blob
+	// has none: the blob is presented under Apple's name, by a hard link in
+	// the cache. Replaced every run.
+	link, err := paths.IPSWLink(cache, path.Base(url), pin.Path)
+	if err != nil {
+		release()
+
+		return "", nil, fmt.Errorf("%w: %w", ErrRestoreImage, err)
+	}
+
+	return link, release, nil
 }
 
 func checkRequirements(requirements *vz.MacOSConfigurationRequirements, opts Options) error {
