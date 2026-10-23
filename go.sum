@@ -8,8 +8,8 @@ github.com/alecthomas/repr v0.5.2 h1:SU73FTI9D1P5UNtvseffFSGmdNci/O6RsqzeXJtP0Qs
 github.com/alecthomas/repr v0.5.2/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
 github.com/forkcloser/blake3 v1.1.0 h1:E0tWTfoLiGurJrwvBcrrkiy1iAE80SX4WHx0BSyUOR8=
 github.com/forkcloser/blake3 v1.1.0/go.mod h1:BLJuiWNe+8WVt0HUpv4WA/Dc/QXXg9WvENESubhOuGQ=
-github.com/forkcloser/vz v0.0.0-20261019145711-b1461fdd2dfd h1:dCMqGwe3SbJCHSPqcE0DPeZuiWe5hrgkifk8HxtSVuA=
-github.com/forkcloser/vz v0.0.0-20261019145711-b1461fdd2dfd/go.mod h1:d71ZzXojXLoadGmTWyyaTg8QRIjFpSJELlPU9D8pR8A=
+github.com/forkcloser/vz v0.0.0-20261023004626-ab2ead467092 h1:JjUuzn9vP2+vQVsQM8r6IXEqYJ9hJrrk2mc8MWnMrfU=
+github.com/forkcloser/vz v0.0.0-20261023004626-ab2ead467092/go.mod h1:d71ZzXojXLoadGmTWyyaTg8QRIjFpSJELlPU9D8pR8A=
 github.com/forkcloser/xos v0.1.0 h1:0vfH2xxdCCDv6x7mYvnQ74zTElzb3wce+0wL+782HtE=
 github.com/forkcloser/xos v0.1.0/go.mod h1:XD7TJl5GzHaZbCBDKby6zDS9zQ+R6DAWclFskmRjAco=
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
