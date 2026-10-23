@@ -81,6 +81,7 @@ const (
 	sshPort         = "22"
 	sshDialTimeout  = 2 * time.Second
 	shutdownGrace   = 2 * time.Minute
+	installerSettle = 3 * time.Minute
 	defaultBootWait = 15 * time.Minute
 	sshBannerPrefix = "SSH-"
 )
@@ -138,13 +139,23 @@ func Install(ctx context.Context, cache, dir string, opts Options) error {
 		return err
 	}
 
-	machineOpts := vm.Options{Dir: target, Config: config}
-
-	if err = restore(ctx, machineOpts, ipsw, progress); err != nil {
+	// One machine for the restore and the first boot: the framework locks the
+	// auxiliary storage for the life of a VZVirtualMachine, and a second one
+	// on the same files, made while the installer's still exists, fails to
+	// start with "Failed to lock auxiliary storage". The installer's
+	// completion leaves the machine running; restore settles it to stopped.
+	guest, err := vm.New(vm.Options{Dir: target, Config: config})
+	if err != nil {
 		return err
 	}
 
-	addr, err := firstBoot(ctx, machineOpts, config, opts, progress)
+	defer guest.Close()
+
+	if err = restore(ctx, guest, ipsw, progress); err != nil {
+		return err
+	}
+
+	addr, err := firstBoot(ctx, guest, target, config, opts, progress)
 	if err != nil {
 		return err
 	}
@@ -341,14 +352,7 @@ func prepare(
 	return target, config, nil
 }
 
-func restore(ctx context.Context, opts vm.Options, ipsw string, progress io.Writer) error {
-	guest, err := vm.New(opts)
-	if err != nil {
-		return err
-	}
-
-	defer guest.Close()
-
+func restore(ctx context.Context, guest *vm.VM, ipsw string, progress io.Writer) error {
 	installer, err := vz.NewMacOSInstaller(guest.Raw(), ipsw)
 	if err != nil {
 		return fmt.Errorf("%w: installer: %w", ErrRestoreImage, err)
@@ -370,11 +374,49 @@ func restore(ctx context.Context, opts vm.Options, ipsw string, progress io.Writ
 
 			fmt.Fprint(progress, "restore: done\n")
 
-			return nil
+			return settle(ctx, guest, progress)
 		case <-ticker.C:
 			fmt.Fprintf(progress, "restore: %3.0f%%\n", installer.FractionCompleted()*100) //nolint:mnd // percent
 		}
 	}
+}
+
+// settle brings the machine the installer ran on to the stopped state the
+// first boot needs. The installer's completion leaves the machine running
+// (Start right after it fails with "transition from running to running");
+// the framework does not say whether it stops on its own after that, so the
+// machine gets a while to do so, and is shut down if it has not.
+func settle(ctx context.Context, guest *vm.VM, progress io.Writer) error {
+	if guest.Raw().State() == vz.VirtualMachineStateStopped {
+		return nil
+	}
+
+	fmt.Fprint(progress, "restore: the installer's machine is still running, waiting for it to stop\n")
+
+	settleCtx, cancel := context.WithTimeout(ctx, installerSettle)
+	defer cancel()
+
+	if err := guest.Wait(settleCtx); err == nil {
+		return nil
+	}
+
+	if ctx.Err() != nil {
+		return fmt.Errorf("%w: %w", ErrRestoreImage, ctx.Err())
+	}
+
+	// A machine in the error state honours no stop request: say so, rather
+	// than report the stop that would fail after it.
+	if guest.Raw().State() == vz.VirtualMachineStateError {
+		return fmt.Errorf("%w: after install: the machine entered the error state", ErrRestoreImage)
+	}
+
+	fmt.Fprint(progress, "restore: shutting the installer's machine down\n")
+
+	if err := guest.Shutdown(ctx, shutdownGrace); err != nil {
+		return fmt.Errorf("%w: after install: %w", ErrRestoreImage, err)
+	}
+
+	return nil
 }
 
 // firstBoot starts the installed guest once with the provisioning options,
@@ -382,18 +424,12 @@ func restore(ctx context.Context, opts vm.Options, ipsw string, progress io.Writ
 // address is returned for the message; the guest learns a new one each boot.
 func firstBoot(
 	ctx context.Context,
-	opts vm.Options,
+	guest *vm.VM,
+	dir *machine.Dir,
 	config *machine.Config,
 	install Options,
 	progress io.Writer,
 ) (netip.Addr, error) {
-	guest, err := vm.New(opts)
-	if err != nil {
-		return netip.Addr{}, err
-	}
-
-	defer guest.Close()
-
 	provisioning := vz.MacGuestProvisioningOptions{
 		FullName:            install.FullName,
 		Username:            config.User,
@@ -404,7 +440,7 @@ func firstBoot(
 
 	fmt.Fprintf(progress, "first boot: provisioning user %s\n", config.User)
 
-	if err = guest.Start(ctx, vz.WithMacOSGuestProvisioning(provisioning)); err != nil {
+	if err := guest.Start(ctx, vz.WithMacOSGuestProvisioning(provisioning)); err != nil {
 		return netip.Addr{}, fmt.Errorf("%w: %w", ErrFirstBoot, err)
 	}
 
@@ -426,7 +462,7 @@ func firstBoot(
 		return netip.Addr{}, fmt.Errorf("%w: %w", ErrFirstBoot, err)
 	}
 
-	agentVersion, agentErr := installAgent(ctx, guest, opts.Dir, addr, config.User, config.Password, progress)
+	agentVersion, agentErr := installAgent(ctx, guest, dir, addr, config.User, config.Password, progress)
 	if agentErr != nil {
 		_ = guest.Shutdown(ctx, shutdownGrace)
 
