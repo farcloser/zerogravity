@@ -40,7 +40,6 @@ const (
 	sshdConfDir    = "/etc/ssh/sshd_config.d"
 	sshdConfFile   = "00-zerogravity.conf"
 	sshdConf       = "PasswordAuthentication no\nKbdInteractiveAuthentication no\n"
-	sshdService    = "system/com.openssh.sshd"
 	outputChunk    = 32 * 1024
 	exitOnBadStart = 127
 )
@@ -117,7 +116,7 @@ func (*Server) Configure(ctx context.Context, msg *agentrpc.ConfigureRequest) (*
 	}
 
 	if msg.GetDisablePasswordSsh() {
-		if err := disablePasswordSSH(ctx); err != nil {
+		if err := disablePasswordSSH(); err != nil {
 			return nil, failed(err)
 		}
 	}
@@ -191,7 +190,11 @@ func lookup(username string) (*account, error) {
 	return &account{User: found, uid: uint32(uid), gid: uint32(gid)}, nil
 }
 
-func disablePasswordSSH(ctx context.Context) error {
+// disablePasswordSSH writes the drop-in. Nothing is restarted: macOS runs sshd
+// through launchd per connection (ssh.plist, inetdCompatibility), so the next
+// connection's sshd reads the directory fresh and the running ones, this
+// install's included, keep their session.
+func disablePasswordSSH() error {
 	if err := os.MkdirAll(sshdConfDir, sshdDirMode); err != nil {
 		return fmt.Errorf("%w: %s: %w", ErrConfigure, sshdConfDir, err)
 	}
@@ -199,11 +202,6 @@ func disablePasswordSSH(ctx context.Context) error {
 	file := filepath.Join(sshdConfDir, sshdConfFile)
 	if err := xos.WriteFile(file, []byte(sshdConf), sshdConfMode); err != nil {
 		return fmt.Errorf("%w: %s: %w", ErrConfigure, file, err)
-	}
-
-	out, err := exec.CommandContext(ctx, "launchctl", "kickstart", "-k", sshdService).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("%w: restarting sshd: %w: %s", ErrConfigure, err, bytes.TrimSpace(out))
 	}
 
 	return nil

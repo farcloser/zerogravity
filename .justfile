@@ -5,6 +5,12 @@ import '.limen/just/main.just'
 # The binary links Virtualization.framework through forkcloser/vz: cgo is
 # mandatory, and the build is darwin/arm64 only.
 export GO_CGO := '1'
+# The baseline builds with the osusergo tag, the pure-Go os/user that reads
+# /etc/passwd; on macOS users live in Open Directory, which only libc's
+# getpwnam reaches, and the guest agent runs commands as the provisioned
+# user. Both binaries are darwin-only, so the tag list is netgo alone: a
+# later -tags wins, which is what BUILD_GO_FLAGS is for.
+export BUILD_GO_FLAGS := '-tags=netgo'
 
 # The FIRST recipe defined here becomes `just`'s default.
 lint: do::lint::go::default do::lint::go::deadcode do::lint::default
