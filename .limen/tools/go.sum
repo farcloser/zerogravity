@@ -8,12 +8,12 @@ github.com/containerd/typeurl/v2 v2.3.0 h1:HZHPhRWo5XMy3QGQoPrUzbW/2ckwjfweHmOwl
 github.com/containerd/typeurl/v2 v2.3.0/go.mod h1:Qk+PAdUYArVj41TnGi6rJ+48RF0PkcTc4i/taoBcK0w=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/forkcloser/dot v1.3.0 h1:5BZ8oE3U7nhheOcgGxWwkca5xbpu+c/1oXfcQ5N6Zv4=
-github.com/forkcloser/dot v1.3.0/go.mod h1:xUgYLXN4L59fE+WzPORysuUZ+Fveqf3eysgp0VCrSFY=
+github.com/forkcloser/dot v1.3.1 h1:jhKEBkdZ8PJYgyohT74+I0zYr0NRXwdTWAsZfAJFaBU=
+github.com/forkcloser/dot v1.3.1/go.mod h1:pM3Q/7e6Ac/vY+7J21Q7QoL69wYSni71xt5SfUkR8Ck=
 github.com/forkcloser/git-validation v0.1.0 h1:VdrgzYWdEsrjqPUsRMXHQcNlD3MDjY0CtQFOd9PiGZ8=
 github.com/forkcloser/git-validation v0.1.0/go.mod h1:FbI4riOH3uiJ71I4ulI1E7ApIbu6JoFeQpcJ0eKQgy0=
-github.com/forkcloser/go-graphviz v0.5.1 h1:F6w6DEOZ1W7c1tyHSbe+T9Br5mpZWjuJ6BzSQu8EcoY=
-github.com/forkcloser/go-graphviz v0.5.1/go.mod h1:EbSWnUlAz5sNUrAeWXI45Fiy074kdsvwXuVuD8nO5Eo=
+github.com/forkcloser/go-graphviz v0.5.2 h1:mtZGeDipgCb+UvnkKasn5NGzRZc9tDQBpayMbBkNqkI=
+github.com/forkcloser/go-graphviz v0.5.2/go.mod h1:LPwbeLn2JeZaoM82ooQOdhghZWX7rfKGo1694ipcs00=
 github.com/forkcloser/go-licenses v0.1.0 h1:8BC87Zfq37/IwDrLrDEvAU5AGsO1o3TJ9JFsjFIkik0=
 github.com/forkcloser/go-licenses v0.1.0/go.mod h1:5YEaEG4nLQ/8r6MPrQXJjGqf+1cbtjWHuNsCMHPZqwE=
 github.com/forkcloser/godolint v0.4.0 h1:a0WMn1ypt09nqCbrnCTVSXq8mZY46a8HLBp2XhX6iAI=
@@ -64,8 +64,8 @@ github.com/tetratelabs/wazero v1.12.0 h1:DuWcpNu/FzgEXgGBDp8J1Spc+CWOvvtvVyjKlaZ
 github.com/tetratelabs/wazero v1.12.0/go.mod h1:LvKtzl2RqO4gyF27BiXU+nKAjcV8f38U+kP/q2vgxh0=
 go.yaml.in/yaml/v3 v3.0.5 h1:N6y/pJk8buWs9NY5ERU2HSMfm+IuD/OtfdAnq6kESPw=
 go.yaml.in/yaml/v3 v3.0.5/go.mod h1:HVTZu1O7/Vkt2N+BFy8Zza+lnLsABggaTM2ZpNIGuKg=
-golang.org/x/image v0.46.0 h1:b1+oYj0Jbp6K5MDT4i4/eZpYlk3V8SJhhDKh6LBHAyQ=
-golang.org/x/image v0.46.0/go.mod h1:3B3W05VGVQyuXucLINLjXKrqISASfi4Xj+iCVkLMwew=
+golang.org/x/image v0.47.0 h1:za/8gVz++PPZqmZJBNSISICN5Rrj5zixP/8K++fgmqo=
+golang.org/x/image v0.47.0/go.mod h1:IkN5o4A7vq55vXN8FWjjnhg9Rs2GOtffqsSi9mWAKYE=
 golang.org/x/mod v0.42.0 h1:ICeL3t2L30ljSPHHxDnR4fqVcBt/zR2zJAb9juavmQg=
 golang.org/x/mod v0.42.0/go.mod h1:u5fzIrRInkL8MaO1cbRkUHT64v303YIT5KEqpNr7jRs=
 golang.org/x/sync v0.24.0 h1:iqiDrGoDgyuvAKrhLQthUEzU/R378N78gXbBjxed7oA=

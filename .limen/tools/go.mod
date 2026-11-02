@@ -17,9 +17,9 @@ tool (
 require (
 	github.com/alecthomas/kong v1.16.1 // indirect
 	github.com/containerd/typeurl/v2 v2.3.0 // indirect
-	github.com/forkcloser/dot v1.3.0 // indirect
+	github.com/forkcloser/dot v1.3.1 // indirect
 	github.com/forkcloser/git-validation v0.1.0 // indirect
-	github.com/forkcloser/go-graphviz v0.5.1 // indirect
+	github.com/forkcloser/go-graphviz v0.5.2 // indirect
 	github.com/forkcloser/go-licenses v0.1.0 // indirect
 	github.com/forkcloser/godolint v0.4.0 // indirect
 	github.com/lmittmann/tint v1.2.1 // indirect
@@ -32,7 +32,7 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/tetratelabs/wazero v1.12.0 // indirect
-	golang.org/x/image v0.46.0 // indirect
+	golang.org/x/image v0.47.0 // indirect
 	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
