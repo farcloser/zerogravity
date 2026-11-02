@@ -18,7 +18,7 @@ require (
 )
 
 require (
-	github.com/forkcloser/vz v0.0.0-20261023004626-ab2ead467092
+	github.com/forkcloser/vz v0.1.0
 	github.com/lmittmann/tint v1.2.1 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 )
