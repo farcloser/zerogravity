@@ -3,8 +3,8 @@ module github.com/farcloser/zerogravity
 go 1.26.0
 
 require (
-	connectrpc.com/connect/v2 v2.0.1
-	github.com/alecthomas/kong v1.16.1
+	connectrpc.com/connect/v2 v2.0.2
+	github.com/alecthomas/kong v1.17.0
 	github.com/forkcloser/xos v0.1.0
 	github.com/mycophonic/primordium v0.15.1
 	golang.org/x/crypto v0.58.0
