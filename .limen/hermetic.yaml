@@ -9,16 +9,21 @@ packages:
   # collapses a two-line `version:` pin): `aqua update` rewrites only that form
   # and treats a separate `version:` key as hand-held, and Renovate reads only
   # that form.
-  # No Go-built tool is pinned here: every one is a `tool` directive in
-  # .limen/tools/go.mod, built by the pinned go (book/tooling.md, "Go-built tools
-  # are go.mod tools"). aqua's go_install would build it once per tool
-  # version, with whichever go ran first, and share that binary.
+  # A pure-Go tool is a `tool` directive in .limen/tools/, built by the pinned
+  # go (book/tooling.md, "Go-built tools are go.mod tools"), never a pin here.
+  # The Go programs below are the ones nothing here compiles: what a write
+  # job runs (cosign and gh; goreleaser and syft in the release job, which
+  # holds contents, id-token and attestations write), each verified against
+  # its upstream's signed release rather than compiled inside that job;
+  # compress, whose programs answer to bare names on every PATH, a script's
+  # and a shell's; ossein, which links a system framework through cgo.
+  # (limen is the repository's own pin, above the import.)
   # The coreutils under their bare names, the same pin on every platform:
   # uutils on macOS and Linux, Git for Windows' MSYS2 coreutils on Windows.
   # The registry entries say why, and how each is verified.
   - name: uutils/coreutils@0.12.0
     registry: local
-  - name: git-for-windows/git@v2.56.0.windows.2
+  - name: git-for-windows/git@v2.56.0.windows.4
     registry: local
   # --- binary-release tools (standard registry, aqua-verified) ---
   # Not here: golang/go. The Go toolchain is each repository's own pin, in its
@@ -26,18 +31,17 @@ packages:
   # afterwards): a standard-library fix must not wait for a limen release.
   - name: casey/just@1.59.0
   - name: koalaman/shellcheck@v0.11.0
-  - name: forkcloser/yamlfmt@v0.2.0
-    registry: local
   - name: lycheeverse/lychee@lychee-v0.24.2
-  - name: goreleaser/goreleaser@v2.18.3
-  - name: sigstore/cosign@v3.1.3
-  - name: gotestyourself/gotestsum@v1.13.0
+  - name: goreleaser/goreleaser@v2.19.0
+  - name: sigstore/cosign@v3.1.4
+  # The SBOM generator the release lane runs over every archive (book/releasing.md).
+  - name: anchore/syft@v1.55.0
   - name: jqlang/jq@jq-1.8.2
-  - name: cli/cli@v2.102.0
+  - name: cli/cli@v2.103.3
   # --- spec tooling (local registry; see .limen/hermetic-registry.yaml) ---
-  - name: quint-co/quint@v0.33.0
+  - name: quint-co/quint@v0.33.1
     registry: local
-  - name: forkcloser/curl@v8.22.0
+  - name: forkcloser/curl@v8.23.0
     registry: local
   # tar, gtar, xz, gzip, zstd, zip and unzip, one pure-Go build on every
   # platform, so a build script unpacks and packs with the same program
@@ -46,5 +50,5 @@ packages:
     registry: local
   # darwin/arm64 only. Its `docker` link shadows the machine's Docker on the
   # hermetic PATH there; aqua skips the package everywhere else.
-  - name: farcloser/ossein@v0.3.3
+  - name: farcloser/ossein@v0.3.4
     registry: local
