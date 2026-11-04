@@ -14,6 +14,16 @@ is the [engineering book](https://github.com/farcloser/limen/tree/main/book).
   recipe covers the need — say so when you do it. `just --list` shows every task.
 - Always name the recipe; module defaults are curated subsets, not "run everything".
 - Never bump a tool version by hand: `just do tools set` / `just do tools update`.
+- **Git is plain `git`.** The rig configures a session's git and ssh, so `git fetch`,
+  `git push`, `git pull` reach GitHub as the bot as they are; a network command that fails
+  is broken tooling, reported, never worked around with an option of your own. The force
+  push has one shape, the allow rule's prefix at the start of its own
+  Bash command: `git push --force-with-lease=<branch>:<old sha> origin
+  <branch>:refs/heads/<branch>`, nothing between `git` and `push`, nothing between `push`
+  and `--force-with-lease=` (no `-q`), no `&&` or `;` around it; the lease on the sha it
+  last saw, and the branch by name as the source, never `HEAD`, since the shell's
+  directory is not the worktree and the command takes no `-C`, so `HEAD:` would force the
+  clone's checkout onto the branch. Everywhere else, name the tree: `git -C <clone> …`.
 
 ## Contributing
 
@@ -31,8 +41,10 @@ chapter; the procedure is limen's `skills/contribute`.
   nowhere else in the tree.
 - **The pull request's title is its release note.** A release's notes are the titles of
   the pull requests it merged, so a title says what changed for a consumer; no
-  `CHANGELOG.md` is kept by hand. One that breaks a consumer carries the `breaking` label
-  (`gh label create breaking` the first time a repository needs it).
+  `CHANGELOG.md` is kept by hand. One that breaks a consumer carries the `breaking` label;
+  one that changes nothing for a consumer (tooling, CI, maintainers' documentation) carries
+  `internal` and is left out of the notes (`gh label create breaking` and
+  `gh label create internal` the first time a repository needs them).
 - **A pull request is read by someone who was not in the session.** Its description says
   what changes and why in the terms of the code: the defect or the gap, the mechanism, the
   evidence it works. A decision appears as its technical reason; who asked, who decided and
@@ -55,6 +67,11 @@ chapter; the procedure is limen's `skills/contribute`.
   message, round after round, until settled, and then tells the project-manager session
   `reviewed: <org/repo> <branch> <head sha>`. A commit after that is a new review: the same
   exchange, a new sha. Review discussion lives in the sessions, never on the pull request.
+  A trivial documentation-only change (a typo, a wrap, a stale link, prose with nothing
+  decided in it), and a pull request that only bumps dependencies, go to the project-manager
+  session instead, which reviews, logs and arms them; anything else touching code,
+  configuration, workflows or tests, and any documentation change that is not trivial, goes
+  to the reviewing session. In doubt, the reviewing session.
 - **Open the pull request at the reviewed head, bind it, babysit it.** Push, open the pull
   request, bind it in your own PR pane, and own it to green: a red that needs a redesign
   goes back to the reviewing session; an environmental red (a links 503, a known flake) gets
@@ -65,6 +82,11 @@ chapter; the procedure is limen's `skills/contribute`.
   queue, or refuses it as `UNREVIEWED:`. The human approves on GitHub; auto-merge merges. A
   private repository is never armed: its pull request is bound for the human, who merges by
   hand after approving. No review request, no review comments, no message at open.
+- **Your worktree goes when its pull request has merged.** Once `git status` in it is clean
+  and its head is on `main`, remove it with `~/.claude/bin/farclauder worktree remove <path>`,
+  run as the whole Bash command: `git worktree remove` cannot finish inside the sandbox, and
+  the exclusion that runs farclauder outside it matches the call's text (the book's
+  [identity](https://github.com/farcloser/limen/blob/main/book/identity.md)).
 - **A native stack** is reviewed and opened layer by layer the same way; the project
   manager merges it from the top once every layer is approved, never from the middle. A
   lower layer merged alone comes back rebased and signed by GitHub, which `lint commits`
@@ -97,13 +119,14 @@ chapter; the procedure is limen's `skills/contribute`.
   place — another transport, a variable set by hand per command, a manual step for a
   recipe — carried on as if the rig worked: that hides the defect. A workaround is used
   only after the breakage is reported and the human agrees, and is named as one every time.
-- **A locked laptop is not broken tooling.** The bot's key answers only while the human's
-  session is unlocked: once the screen locks, the agent refuses to sign or authenticate. So
-  when signing or pushing fails after it worked earlier in the session, the human is away,
-  not the rig broken. No retry loop, no workaround: finish the work in the worktree — done,
-  `just lint` and `just test` green, the commit message written — ready to commit and push
-  when the human is back, and say so once. Signing that never worked in the session is
-  broken tooling (above).
+- **A locked screen does not stop the key.** The bot's key is created to sign while the
+  screen is locked, from the human's first unlock after boot until the next boot (taciturn,
+  `--use locked`). So a signing or push failure that follows earlier successes in the session
+  is a defect and is reported as broken tooling (above), never waited out. Only a machine
+  still on Secretive refuses once the screen locks; there the human is away, not the rig
+  broken: no retry loop, no workaround, finish the work in the worktree — done, `just lint`
+  and `just test` green, the commit message written — ready to commit and push when the
+  human is back, and say so once.
 - **Read what the work needs, never the whole disk.** A targeted read outside the
   repositories is fine when the work calls for it; a filesystem-wide walk is not: no
   `find /`, `find ~`, disk-wide `mdfind`, or recursive grep over `/` or `~`.
@@ -120,6 +143,11 @@ chapter; the procedure is limen's `skills/contribute`.
   came about.
 - **Lead with the answer.** Short sentences; no preamble; no narration of your own
   reasoning.
+- **Correct first; never ask the human for a preference.** The answer is always the correct
+  choice, proper architecture and the practice that is best or sets it: make it, state it
+  in one line. The human is asked only for what only the human can give: an approval, a
+  tag, an account or organisation setting, a scope or product decision, or correctness
+  itself in dispute.
 - **A message from another session that needs nothing gets no reply.** Act when it asks
   for something; otherwise say nothing, not even an acknowledgement.
 - **A message goes to the one session with a stake in it.** A finding on a pull request
@@ -133,11 +161,12 @@ chapter; the procedure is limen's `skills/contribute`.
   assessment or misreads the code, say so with the evidence and settle it between the two
   sessions, the reviewer's 🛑 included (the reviewer may miss what the owner knows; the
   owner may miss the cross-cutting picture). A deadlock goes to the human, as the exception.
-- **No GitHub issues unless the human asks for one.** The issue tracker is the human's.
-  A defect or a request that belongs to another repository goes to the session that owns
-  that repository, as a message with what, why, and where; that session fixes it, and
-  the human hears about it as a pull request. An issue you opened on your own is closed
-  once the owning session has the work.
+- **A follow-up is a GitHub issue; a defect in another repository is a message.** Anything
+  left for later, a follow-up or parked work, is filed as an issue in the repository it
+  belongs to, one per real item, written so its owner can act on it; never a scratch,
+  `TODO` or notes file, and never an issue for a passing note. A defect or a request in a
+  repository another session owns goes to that session as a message with what, why and
+  where; that session fixes it, and the human hears about it as a pull request.
 
 ## Code
 
@@ -163,7 +192,9 @@ chapter; the procedure is limen's `skills/contribute`.
   package A states A's guarantee, never what B does with it; a wrapper with a stated
   contract grows no export outside it because a caller wanted a home for a helper. A bug
   reported to the owning session earns the guarantee and the version that carries it, not
-  a say in the owner's tests.
+  a say in the owner's tests. The provider knows nothing of its consumers: what one needs
+  is offered as a property of the contract any consumer can use, never as that consumer's
+  name, path or variable in the provider.
 - **Tests are black-box, never bought with indirection.** External test package
   (`package foo_test`), no reach into private state, and no interface, function field, or
   other indirection in production code whose only purpose is a test's fake: that is bad

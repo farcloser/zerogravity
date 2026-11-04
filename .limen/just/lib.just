@@ -66,6 +66,75 @@ _per-platform +cmd:
 # exists, `net` alone would call one to build them.
 go_tool_build := 'mkdir -p "$LIMEN_BUILD/tools" && GOOS="" GOARCH="" CGO_ENABLED=0 go -C .limen/tools build -o "$LIMEN_BUILD/tools/"'
 
+# cargo through the pinned rustup, never ~/.cargo/bin (book/rust.md). The
+# pin is rust-lang/rustup in the project's .hermetic/hermetic.yaml, which
+# links rustup-init; the first lane installs rustup from it under
+# $LIMEN_BUILD with no toolchain, and the toolchain is rust-toolchain.toml's,
+# fetched by the first cargo call and verified against the release manifest.
+# Windows: rustup wants native paths for its two homes, hence cygpath, and
+# hermetic's link resolves rustup-init to the .exe. Injected as a just
+# variable: module recipes cannot share shell functions. Every Rust lane
+# passes vacuously without a Cargo.toml, so a module can sit in a default.
+rust_env := '''
+    export RUSTUP_HOME="$LIMEN_BUILD/rustup" CARGO_HOME="$LIMEN_BUILD/cargo"
+    if command -v cygpath >/dev/null 2>&1; then
+        RUSTUP_HOME="$(cygpath -m "$RUSTUP_HOME")"; CARGO_HOME="$(cygpath -m "$CARGO_HOME")"
+    fi
+    export RUSTUP_INIT_SKIP_PATH_CHECK=yes
+    if [ ! -f rust-toolchain.toml ]; then
+        echo "rust-toolchain.toml is missing: the toolchain is pinned there, an exact version with its components and targets (book/rust.md)." >&2
+        exit 1
+    fi
+    if [ ! -x "$LIMEN_BUILD/cargo/bin/cargo" ] && [ ! -x "$LIMEN_BUILD/cargo/bin/cargo.exe" ]; then
+        if ! command -v rustup-init >/dev/null 2>&1; then
+            echo "rustup-init is not on the hermetic PATH: pin rust-lang/rustup in .hermetic/hermetic.yaml (just do tools add local,rust-lang/rustup <version>, book/rust.md)." >&2
+            exit 1
+        fi
+        # stdout is rustup-init's welcome ("Rust is installed now. Great!", the
+        # PATH advice): nothing a lane reports; its errors stay on stderr.
+        rustup-init -y -q --no-modify-path --no-update-default-toolchain --default-toolchain none --profile minimal >/dev/null
+    fi
+    export PATH="$LIMEN_BUILD/cargo/bin:$PATH"
+    # Windows: rustup's default host is the msvc triple, whose host builds
+    # (build scripts, proc-macros, the tests) link through the runner image's
+    # Visual Studio, which nothing pins. The GNU triples link through pinned
+    # tools instead, so the pinned toolchain is the whole build: x64 through
+    # the toolchain's own rust-mingw; arm64, whose gnullvm host ships no
+    # linker (it expects a MinGW clang on PATH), through the pinned zig by
+    # way of cargo-zigbuild's `zig cc`, the linker the cross builds use,
+    # which maps the libraries rustc asks for (msvcrt) to zig's. Read from
+    # rustup rather than from uname or the environment, which lie under
+    # emulation on arm64 (book/windows.md); idempotent, so a cached rustup
+    # from before this line is moved too.
+    case "$(rustup show 2>/dev/null | sed -n 's/^Default host: //p')" in
+        x86_64-pc-windows-msvc) rustup set default-host x86_64-pc-windows-gnu >/dev/null ;;
+        aarch64-pc-windows-msvc) rustup set default-host aarch64-pc-windows-gnullvm >/dev/null ;;
+    esac
+    if [ "$(rustup show 2>/dev/null | sed -n 's/^Default host: //p')" = aarch64-pc-windows-gnullvm ]; then
+        for tool in zig cargo-zigbuild; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+                echo "$tool is not on the hermetic PATH: the aarch64 Windows host links through the project's pinned zig and cargo-zigbuild (ziglang/zig and rust-cross/cargo-zigbuild in .hermetic/hermetic.yaml)." >&2
+                exit 1
+            fi
+        done
+        mkdir -p "$LIMEN_BUILD/zig"
+        linker="$LIMEN_BUILD/zig/aarch64-pc-windows-gnullvm-linker.cmd"
+        printf '@echo off\r\nsetlocal DisableDelayedExpansion\r\n"%s" zig cc -- -target aarch64-windows-gnu %%*\r\n' "$(cygpath -w "$(command -v cargo-zigbuild)")" > "$linker"
+        linker_native="$(cygpath -m "$linker")"
+        export CARGO_TARGET_AARCH64_PC_WINDOWS_GNULLVM_LINKER="$linker_native"
+        export ZIG_GLOBAL_CACHE_DIR="$LIMEN_BUILD/zig/global" ZIG_LOCAL_CACHE_DIR="$LIMEN_BUILD/zig/local"
+        export CARGO_ZIGBUILD_CACHE_DIR="$LIMEN_BUILD/zig/cargo-zigbuild"
+    fi
+    # The toolchain rust-toolchain.toml names, installed explicitly when the
+    # file's toolchain is not there yet (a first run, a channel bump): the
+    # proxies would auto-install it under RUSTUP_AUTO_INSTALL, with a warning
+    # on every first lane, and a lane runs no step it did not state.
+    if ! RUSTUP_AUTO_INSTALL=0 rustup which cargo >/dev/null 2>&1; then
+        # --no-self-update: a pinned rustup asks nobody for a newer one.
+        rustup toolchain install --no-self-update
+    fi
+'''
+
 # Every Go-built tool the recipes run — the Go-source analyzers and the rest
 # alike — is a `tool` directive in a module under .limen/tools/, built natively ONCE
 # into .build/tools/ by the pinned go (book/tooling.md, "Go-built tools are
@@ -76,10 +145,15 @@ go_tool_build := 'mkdir -p "$LIMEN_BUILD/tools" && GOOS="" GOARCH="" CGO_ENABLED
 # dependencies past what upstream tested). The isolated module wins when both
 # exist. A directive missing from both fails with the recipe that adds it.
 # Recipes depend on this with the tool's name and package, then call
-# .build/tools/<name>.
-_go-tool name pkg:
+# .build/tools/<name>. A third argument names a file the recipe needs to run
+# at all (go.mod for a lane CI runs everywhere): without it the tool is not
+# built, so a repository with no Go module is not asked for the directive.
+_go-tool name pkg requires='':
     #!/usr/bin/env bash
     set -euo pipefail
+    if [ -n '{{ requires }}' ] && [ ! -f '{{ requires }}' ]; then
+        exit 0
+    fi
     pattern='^(tool[[:space:]]+)?[[:space:]]*{{ pkg }}([[:space:]]|$)'
     if grep -qE "$pattern" '.limen/tools/{{ name }}/go.mod' 2>/dev/null; then
         mkdir -p "$LIMEN_BUILD/tools" && GOOS='' GOARCH='' CGO_ENABLED=0 go -C '.limen/tools/{{ name }}' build -o "$LIMEN_BUILD/tools/" '{{ pkg }}'
