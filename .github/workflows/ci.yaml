@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   limen:
-    uses: ./.github/workflows/limen-verify.yaml
+    uses: farcloser/limen/.github/workflows/limen-verify.yaml@35b1536b6d63dd309b55725d0d048ffd2124e92b # v0.28.0
     permissions:
       contents: read
     # The binary links Virtualization.framework through cgo and clones disks
