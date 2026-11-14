@@ -9,19 +9,24 @@
 
 # Lanes: `vX.Y.Z` cuts the signed tag and pushes (CI builds, signs keyless,
 # publishes; without a .release-go.yaml, the recipe creates the release page
-# itself); `--local <key> vX.Y.Z` is the fully local, key-based lane and the
-# sole publisher; `--local --dry-run` is an unsigned snapshot; `--ci` is the
-# workflow half. usage() below and book/recipes.md have the details.
+# itself); `--local --dry-run` is an unsigned snapshot; `--ci` is the
+# workflow half. usage() below and book/releasing.md have the details. There
+# is no key-based lane: a release is signed keyless in CI or not at all
+# (book/releasing.md, "The signing and provenance policy").
 #
 # Tag pushes are exactly one tag, never --tags. A signed tag already on HEAD is
 # reused, so a failed publish retries safely.
-[doc('Release: `vX.Y.Z` signed tag (+ CI artifacts when .release-go.yaml exists) · `--local <cosign-key> vX.Y.Z` · `--local --dry-run` · `--ci`')]
+# The arguments arrive as the script's own "$@" (positional-arguments), never
+# interpolated into its text: a `{{ args }}` would run a `;` in an argument as
+# a command before the tag below is validated.
+[doc('Release: `vX.Y.Z` signed tag (+ CI artifacts when .release-go.yaml exists) · `--local --dry-run` · `--ci`')]
+[positional-arguments]
 release *args:
     #!/usr/bin/env bash
     set -euo pipefail
     # Artifacts are opt-in by carrying a goreleaser config. Without one the
     # default lane still releases: the signed tag IS the release (a Go module, a
-    # tap, a configuration). --local and --ci run goreleaser, so they require it.
+    # tap, a configuration). --local --dry-run and --ci run goreleaser, so they require it.
     has_goreleaser() { [ -f .release-go.yaml ]; }
     require_goreleaser() {
         if ! has_goreleaser; then
@@ -31,7 +36,6 @@ release *args:
     }
     usage() {
         echo "usage: just do release <tag>                                               # signed tag + push; CI builds, signs (keyless), publishes (no .release-go.yaml: the release page, with notes)" >&2
-        echo "       just do release --local <cosign-key> <tag> [--cosign-password-stdin] # fully local, key-based cosign" >&2
         echo "       just do release --local --dry-run                                   # local unsigned snapshot into .build/release/" >&2
         echo "       just do release --ci                                                # workflow half of the default lane (GitHub Actions only)" >&2
     }
@@ -46,9 +50,13 @@ release *args:
     }
     # A fourth segment is a fork's rebuild of the same upstream version
     # (v10.6.1.2, book/forks.md): never a -suffix, which semver sorts before
-    # the release it rebuilds.
+    # the release it rebuilds. A rebuild carries no prerelease of its own:
+    # goreleaser reads no semver from it (--ci below), so a suffix would be
+    # published as a full release.
+    rebuild_tag_re='^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'
     require_version_tag() {
-        if ! printf '%s' "$1" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'; then
+        if ! printf '%s' "$1" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$' &&
+            ! printf '%s' "$1" | grep -qE "$rebuild_tag_re"; then
             echo "'$1' is not a version tag (vX.Y.Z, vX.Y.Z-prerelease, or a fork's rebuild vX.Y.Z.N)." >&2
             exit 2
         fi
@@ -70,7 +78,11 @@ release *args:
             # to be trusted — the GPG keyring, or gpg.ssh.allowedSignersFile for
             # SSH — and would reject a legitimately SSH-signed tag when that is
             # not set up, breaking the very retry this branch exists for.
-            if ! git cat-file tag "refs/tags/$1" 2>/dev/null | grep -qE '^-----BEGIN [A-Z0-9]+ SIGNATURE-----'; then
+            # Read first, searched after: piped into grep -q, which closes the
+            # pipe at its match, git is killed by SIGPIPE under pipefail and a
+            # signed tag reads as unsigned.
+            object="$(git cat-file tag "refs/tags/$1" 2>/dev/null || true)"
+            if ! printf '%s\n' "$object" | grep -qE '^-----BEGIN [A-Z0-9]+ SIGNATURE-----'; then
                 echo "tag $1 is on HEAD but is not a signed tag — refusing to reuse it." >&2
                 echo "delete it and let the release create a fresh signed tag: git tag -d $1" >&2
                 exit 1
@@ -116,96 +128,17 @@ release *args:
         git push origin HEAD
         git push origin "refs/tags/$1"
     }
-    set -- {{ args }}
     case "${1:-}" in
         --local)
             shift
             require_goreleaser
             if [ "${1:-}" = "--dry-run" ]; then
-                # Snapshot builds skip signing: no key material needed.
+                # Snapshot builds skip signing: no key material needed. The
+                # SBOMs are still made, so a dry run proves the whole lane.
                 exec goreleaser release --config .release-go.yaml --snapshot --clean --skip=sign
             fi
-            key="${1:-}"
-            if [ -z "$key" ]; then
-                usage
-                exit 2
-            fi
-            shift
-            tag=""
-            password=""
-            password_from_stdin=""
-            while [ $# -gt 0 ]; do
-                case "$1" in
-                    --cosign-password-stdin)
-                        # A boolean flag, NOT a value: the passphrase is read from
-                        # stdin below, so it never enters argv or shell history.
-                        password_from_stdin=1
-                        shift
-                        ;;
-                    -*)
-                        echo "unknown option: $1" >&2
-                        usage
-                        exit 2
-                        ;;
-                    *)
-                        if [ -n "$tag" ]; then
-                            echo "unexpected argument: $1 (tag already given: $tag)" >&2
-                            usage
-                            exit 2
-                        fi
-                        tag="$1"
-                        shift
-                        ;;
-                esac
-            done
-            if [ -z "$tag" ]; then
-                usage
-                exit 2
-            fi
-            if [ ! -f "$key" ]; then
-                echo "cosign key not found: $key" >&2
-                echo "generate a key pair once with 'cosign generate-key-pair'; commit cosign.pub, keep the private key out of the tree." >&2
-                exit 1
-            fi
-            require_version_tag "$tag"
-            require_clean
-            require_empty_queue
-            if [ -z "${GITHUB_TOKEN:-}" ]; then
-                echo "GITHUB_TOKEN is not set — goreleaser needs it to publish the GitHub release." >&2
-                exit 1
-            fi
-            # cosign under goreleaser cannot prompt, so the passphrase travels as
-            # COSIGN_PASSWORD: read once here, never through argv. Empty is legal
-            # (unencrypted key).
-            if [ -n "$password_from_stdin" ]; then
-                # --cosign-password-stdin: the passphrase is piped in, so `cat`
-                # would echo it in cleartext if stdin were the terminal. Refuse
-                # that footgun and point at the two safe forms.
-                if [ -t 0 ]; then
-                    echo "--cosign-password-stdin expects the passphrase piped on stdin, but stdin is a terminal." >&2
-                    echo "pipe it (e.g. 'pass show cosign | just do release --local $key $tag --cosign-password-stdin'), or drop the flag to be prompted." >&2
-                    exit 2
-                fi
-                # Read ALL of stdin; command substitution strips trailing
-                # newlines, so a here-string, a `printf | ` pipe, and a file with
-                # or without a trailing newline all yield the same passphrase.
-                password=$(cat)
-            else
-                # No stdin channel: prompt on the terminal itself (/dev/tty, never
-                # fd 0 — goreleaser may want stdin, and fd 0 may be redirected).
-                printf 'cosign key password (empty for an unencrypted key): ' >&2
-                read -rs password < /dev/tty
-                echo >&2
-            fi
-            export COSIGN_KEY="$key"
-            export COSIGN_PASSWORD="$password"
-            # Sole publisher: push the commit, never the tag. goreleaser creates the
-            # release and the remote tag through the API, and with no v* tag push
-            # the release workflow never fires alongside it. The signed tag stays
-            # local.
-            ensure_signed_tag "$tag"
-            git push origin HEAD
-            exec goreleaser release --config .release-go.yaml --clean
+            usage
+            exit 2
             ;;
         --ci)
             # The workflow half: the tag exists (its push triggered this run,
@@ -229,10 +162,22 @@ release *args:
                 echo "HEAD carries no tag — this lane only runs on a tag push." >&2
                 exit 1
             fi
-            # Keyless is enforced, not defaulted: a key leaking into the CI
-            # environment must not silently flip the signing mode.
-            unset COSIGN_KEY
-            exec goreleaser release --config .release-go.yaml --clean
+            # goreleaser refuses a tag that is not semver, and a fork's
+            # rebuild tag is not: --skip=validate is its one way past, and it
+            # also drops goreleaser's dirty-tree and tag-at-HEAD checks, so
+            # the two are made here first, on the tag this run was pushed for.
+            opts=()
+            tag="${GITHUB_REF_NAME:-}"
+            if printf '%s' "$tag" | grep -qE "$rebuild_tag_re"; then
+                require_clean
+                if ! git describe --exact-match --tags --match "$tag" HEAD >/dev/null 2>&1; then
+                    echo "$tag is not on HEAD — this lane releases the tag its run was pushed for." >&2
+                    exit 1
+                fi
+                export GORELEASER_CURRENT_TAG="$tag"
+                opts+=(--skip=validate)
+            fi
+            exec goreleaser release --config .release-go.yaml --clean ${opts[@]+"${opts[@]}"}
             ;;
         --dry-run)
             echo "dry runs are a local concern: use 'just do release --local --dry-run'." >&2
@@ -296,3 +241,24 @@ release *args:
             fi
             ;;
     esac
+
+# goreleaser's sign command (.release-go.yaml `signs:`): one keyless
+# signature over a release file, in CI. cosign gives up on Fulcio at the first
+# dropped connection and retries Rekor once, so a reset on the runner fails
+# the release with nothing wrong in it. Every attempt is a fresh key, a fresh
+# certificate and a new log entry, so one that failed halfway cannot collide
+# with the next; its partial bundle is removed first.
+[doc("Sign a release file keyless with cosign into a Sigstore bundle (goreleaser's sign command)")]
+[positional-arguments]
+release-sign file bundle:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    file="$1" bundle="$2"
+    for attempt in 1 2 3; do
+        rm -f "$bundle"
+        if cosign sign-blob --yes --bundle "$bundle" "$file" && [ -s "$bundle" ]; then
+            exit 0
+        fi
+        [ "$attempt" -lt 3 ] || { echo "release-sign: $file could not be signed" >&2; exit 1; }
+        sleep $((attempt * 15))
+    done
