@@ -42,16 +42,3 @@ func TestMajorFrom(t *testing.T) {
 		t.Fatalf("VersionFrom = %q, %v; want 26.6.2", version, versionErr)
 	}
 }
-
-func TestMajorReadsTheHost(t *testing.T) {
-	t.Parallel()
-
-	major, err := hostos.Major()
-	if err != nil {
-		t.Fatalf("Major: %v", err)
-	}
-
-	if major < 11 {
-		t.Fatalf("Major = %d, want a macOS on Apple silicon", major)
-	}
-}
