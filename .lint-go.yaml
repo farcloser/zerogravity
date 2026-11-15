@@ -14,6 +14,12 @@ golangci:
           # vmnet.ErrNetwork) and say what failed; pkg/vm hands them on as is.
           - github.com/forkcloser/vz
           - github.com/forkcloser/vz/*
+        extra-ignore-sigs:
+          # Connect's error constructors, as errors.New and fmt.Errorf are in
+          # wrapcheck's own list: a handler returns the coded error it builds,
+          # and the code is what the host reads.
+          - connect/v2.NewError(
+          - connect/v2.Error).WithCause(
       depguard:
         rules:
           main:
