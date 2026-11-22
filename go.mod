@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	connectrpc.com/connect/v2 v2.0.2
 	github.com/alecthomas/kong v1.17.0
-	github.com/forkcloser/xos v0.1.1
+	github.com/forkcloser/xos v0.1.2
 	github.com/mycophonic/primordium v0.15.1
 	golang.org/x/crypto v0.59.0
 	golang.org/x/sys v0.50.0
